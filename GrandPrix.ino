@@ -6,94 +6,105 @@
 /*****************************/
 // includes
 #include <SPI.h>
-#include "Adafruit_GFX.h"
-#include "Adafruit_HX8357.h"
 #include <util/atomic.h>
 /*****************************/
 // definitions
 #define pressurePin A3
 #define rpmPin 2
-#define TFT_CS 10
-#define TFT_DC 9
-#define TFT_RST -1 // RST can be set to -1 if you tie it to Arduino's reset
-Adafruit_HX8357 tft = Adafruit_HX8357(TFT_CS, TFT_DC, TFT_RST);
-// Color definitions
-#define BLACK    0x0000
-#define BLUE     0x001F
-#define RED      0xF800
-#define GREEN    0x07E0
-#define CYAN     0x07FF
-#define MAGENTA  0xF81F
-#define YELLOW   0xFFE0 
-#define WHITE    0xFFFF
 /*****************************/
 // variables
 unsigned int rpm,RPM;//varaible to store rpm
+unsigned int rpmImage;//variable to store which rpm image to display
 volatile unsigned int PULSE;//counter for pulses 
 unsigned int delta; //holds the delta time
 unsigned long timeNew; //variable to store current check time
 unsigned long timeOld;  //variable to store previous check time
 unsigned int analogVolts; //variable to store the voltage reading from pressurePin
 unsigned int oilPressure; //varible to store readable oil pressure
+unsigned int waterTemp; //variable to store readable water temp
+// Calibration for smoothing RPM:
+const int numReadings = 20;     // number of samples for smoothing. The higher, the more smoothing, but slower to react. Default: 20
+// Variables for smoothing tachometer:
+int readings[numReadings];  // the input
+int readIndex = 0;  // the index of the current reading
+long total = 0;  // the running total
+int average = 0;  // the average
+
 
 void setup() {
   // put your setup code here, to run once:
-  Serial.begin(115200);           //  setup serial
+  Serial.begin(9600);           //  setup serial
   //vss
   attachInterrupt(digitalPinToInterrupt(rpmPin),rpmCount,FALLING);//create interrupt on rpmPin to run rpmCount() on each pulse
-  timeOld = millis();
-  //screen 
-  tft.begin();
-  // read diagnostics (optional but can help debug problems)
-  uint8_t x = tft.readcommand8(HX8357_RDPOWMODE);
-  Serial.print("Display Power Mode: 0x"); Serial.println(x, HEX);
-  x = tft.readcommand8(HX8357_RDMADCTL);
-  Serial.print("MADCTL Mode: 0x"); Serial.println(x, HEX);
-  x = tft.readcommand8(HX8357_RDCOLMOD);
-  Serial.print("Pixel Format: 0x"); Serial.println(x, HEX);
-  x = tft.readcommand8(HX8357_RDDIM);
-  Serial.print("Image Format: 0x"); Serial.println(x, HEX);
-  x = tft.readcommand8(HX8357_RDDSDR);
-  Serial.print("Self Diagnostic: 0x"); Serial.println(x, HEX); 
-
-  tft.setRotation(3);
-  tft.fillScreen(HX8357_BLACK);
-
-  
+  timeOld = millis();  
   delay(2000);
 }
 
 void loop() {
+  delay(20);
   // put your main code here, to run repeatedly:
-  
+  //rpm read
   ATOMIC_BLOCK(ATOMIC_RESTORESTATE){  
     rpm = readRpm();
   }
-  //Serial.print("RPM:");
-  //Serial.println(rpm);
+  rpm = constrain(rpm, 0, 8000);  // Constrain the value so it doesn't go below or above the limits
+  
+  // Smoothing RPM:
+  // subtract the last reading:
+  total = total - readings[readIndex];
+  // read speed:
+  readings[readIndex] = rpm;  // takes the value we are going to smooth
+  // add the reading to the total:
+  total = total + readings[readIndex];
+  // advance to the next position in the array:
+  readIndex = readIndex + 1;
+
+  // if we're at the end of the array...
+  if (readIndex >= numReadings) {
+    // ...wrap around to the beginning:
+    readIndex = 0;
+  }
+  
+  // calculate the average:
+  average = total / numReadings;  // the average value it's the smoothed result
+
+  //rpmImage = map(rpm, 0, 8000, 0, 208);//maps rpm to the correct image to display
+  rpmImage = map(average, 0, 8000, 0, 208);//maps smoothed rpm to the correct image to display
+  rpmImage = constrain(rpmImage, 0, 208);//ensure image is 0 to 208 only 
+
+  
+
+  //oil pressure read
   analogVolts = analogRead(pressurePin); //read in the analog voltage
   if(analogVolts < 102){
-    Serial.println("Oil pressure low input");
+    oilPressure = 0;
+    //Serial.println("Oil pressure low input");
   }
   else if(analogVolts > 922){
-    Serial.println("Oil pressure high input");
+    oilPressure = 0;
+    //Serial.println("Oil pressure high input");
   }
   else{
-    oilPressure = map(analogVolts, 102, 922, 0, 100);
-    Serial.print("Oil Pressure:");
-    Serial.println(oilPressure);
+    oilPressure = map(analogVolts, 102, 922, 0, 100); //map .5v to 0 PSI/% and 4.5v to 100 PSI/%
   }
-
-  // screen
-  tft.fillRect(340, 0, 100, 60, BLACK);
-  tft.setCursor(0, 0);
-  tft.setTextColor(HX8357_WHITE);  tft.setTextSize(4);
-  tft.print("Oil Pressure:   ");
-  tft.println(oilPressure);
-  tft.print("Engine Speed:   ");
-  tft.println(rpm);  
+  oilPressure = constrain(oilPressure, 0, 100);
   
-  delay(200);
+  //water temp read
+  // not connected currently
+  //map(waterTemp, 100, 250, 0, 100); //map 100 deg to 0% and 250 deg to 100%
+  waterTemp = 0;
+  waterTemp = constrain(waterTemp, 0, 100);
+
+  //output
+  // Send tachometer value:
+  nextionWrite("tach.pic",rpmImage);
+  //Send oil press value:
+  nextionWrite("oil.val",oilPressure);
+  nextionWrite("oiln.val",oilPressure);
+  //Send water temp value:
+  nextionWrite("temp.val",waterTemp);
+  nextionWrite("tempn.val",waterTemp);
+   
 }
 
 /*****************************/
@@ -111,4 +122,14 @@ unsigned int readRpm()//runs when called
   timeOld = timeNew;
   PULSE = 0;
   return result;
+}
+/*****************************/
+void nextionWrite(const char* item, int val)
+{
+  Serial.print(item); // This is sent to the nextion display to set what object name (before the dot) and what atribute (after the dot) are you going to change.
+  Serial.print("=");
+  Serial.print(val);
+  Serial.write(0xff);  // We always have to send this three lines after each command sent to the nextion display.
+  Serial.write(0xff);
+  Serial.write(0xff);      
 }
