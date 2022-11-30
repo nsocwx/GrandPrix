@@ -22,6 +22,7 @@ unsigned long timeOld;  //variable to store previous check time
 unsigned int analogVolts; //variable to store the voltage reading from pressurePin
 unsigned int oilPressure; //varible to store readable oil pressure
 unsigned int waterTemp; //variable to store readable water temp
+unsigned int cylinders = 8; //stores number of cylinders
 // Calibration for smoothing RPM:
 const int numReadings = 20;     // number of samples for smoothing. The higher, the more smoothing, but slower to react. Default: 20
 // Variables for smoothing tachometer:
@@ -118,7 +119,7 @@ unsigned int readRpm()//runs when called
   unsigned int result;
   timeNew = millis();
   delta = (timeNew-timeOld);
-  result = (PULSE/delta)*60000;//adjust revolution to per minute= 60k millis 
+  result = (PULSE*60*1000)/delta/cylinders;
   timeOld = timeNew;
   PULSE = 0;
   return result;
