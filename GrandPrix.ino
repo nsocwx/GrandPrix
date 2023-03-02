@@ -21,7 +21,9 @@ unsigned long timeNew; //variable to store current check time
 unsigned long timeOld;  //variable to store previous check time
 unsigned int analogVolts; //variable to store the voltage reading from pressurePin
 unsigned int oilPressure; //varible to store readable oil pressure
+unsigned int tempRaw; //variable to store the raw temp reading
 unsigned int waterTemp; //variable to store readable water temp
+unsigned int waterTempBar; //variable to store the water temp bar graph %
 unsigned int cylinders = 8; //stores number of cylinders
 // Calibration for smoothing RPM:
 const int numReadings = 20;     // number of samples for smoothing. The higher, the more smoothing, but slower to react. Default: 20
@@ -91,10 +93,11 @@ void loop() {
   oilPressure = constrain(oilPressure, 0, 100);
   
   //water temp read
-  // not connected currently
-  //map(waterTemp, 100, 250, 0, 100); //map 100 deg to 0% and 250 deg to 100%
-  waterTemp = 0;
-  waterTemp = constrain(waterTemp, 0, 100);
+  tempRaw = analogread(0);
+  waterTemp = Thermister(tempRaw);
+  waterTempBar = waterTemp;
+  map(waterTempBar, 100, 250, 0, 100); //map 100 deg to 0% and 250 deg to 100%
+  waterTempBar = constrain(waterTempBar, 0, 100);
 
   //output
   // Send tachometer value:
@@ -103,7 +106,7 @@ void loop() {
   nextionWrite("oil.val",oilPressure);
   nextionWrite("oiln.val",oilPressure);
   //Send water temp value:
-  nextionWrite("temp.val",waterTemp);
+  nextionWrite("temp.val",waterTempBar);
   nextionWrite("tempn.val",waterTemp);
    
 }
@@ -133,4 +136,15 @@ void nextionWrite(const char* item, int val)
   Serial.write(0xff);  // We always have to send this three lines after each command sent to the nextion display.
   Serial.write(0xff);
   Serial.write(0xff);      
+}
+
+/*****************************/ 
+//https://forum.arduino.cc/t/gm-coolant-sensor-12146312-interface/410131
+double Thermister(int RawADC) {  //Function to perform the fancy math of the Steinhart-Hart equation
+ double Temp;
+ Temp = log(((10240000/RawADC) - 10000));
+ Temp = 1 / (0.001129148 + (0.000234125 + (0.0000000876741 * Temp * Temp ))* Temp );
+ Temp = Temp - 273.15;              // Convert Kelvin to Celsius
+ Temp = (Temp * 9.0)/ 5.0 + 32.0; // Celsius to Fahrenheit - comment out this line if you need Celsius
+ return Temp;
 }
