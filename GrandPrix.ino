@@ -70,7 +70,7 @@ void loop() {
   rpm = constrain(rpm, 0, 8000);  // Constrain the value so it doesn't go below or above the limits  
   rpmImage = map(rpm, 0, 8000, 0, 208);//maps smoothed rpm to the correct image to display
   rpmImage = constrain(rpmImage, 0, 208);//ensure image is 0 to 208 only   
-  rpm = rpm - 5;// tick down rpm to handle no input
+  samples.add(0);// tick down rpm to handle no input
 
   //oil pressure read
   oilPressure = readPSISensor(pressurePin);
@@ -79,7 +79,7 @@ void loop() {
   //water temp read
   waterTemp = readNTCSensor (tempPin, "GM coolant temp", GMCoeffA, GMCoeffB, GMCoeffC);
   waterTempBar = readNTCSensor (tempPin, "GM coolant temp", GMCoeffA, GMCoeffB, GMCoeffC);
-  map(waterTempBar, 100, 250, 0, 100); //map 100 deg to 0% and 250 deg to 100%
+  waterTempBar = map(waterTempBar, 100, 250, 0, 100); //map 100 deg to 0% and 250 deg to 100%
   waterTempBar = constrain(waterTempBar, 0, 100);
   
   //output
